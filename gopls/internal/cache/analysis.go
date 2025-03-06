@@ -197,12 +197,13 @@ func (s *Snapshot) Analyze(ctx context.Context, pkgs map[PackageID]*metadata.Pac
 			// -- preorder --
 
 			an = &analysisNode{
-				parseCache:  s.view.parseCache,
-				fsource:     s, // expose only ReadFile
-				batch:       batch,
-				ph:          ph,
-				analyzers:   facty, // all nodes run at least the facty analyzers
-				stableNames: stableNames,
+				parseCache:     s.view.parseCache,
+				fsource:        s, // expose only ReadFile
+				batch:          batch,
+				ph:             ph,
+				analyzers:      facty, // all nodes run at least the facty analyzers
+				stableNames:    stableNames,
+				categoryFilter: s.Options().CategoryFilter,
 			}
 			nodes[id] = an
 
@@ -471,7 +472,7 @@ type analysisNode struct {
 	unfinishedPreds atomic.Int32                  // effectively a summary.Actions refcount
 	summary         *analyzeSummary               // serializable result of analyzing this package
 	stableNames     map[*analysis.Analyzer]string // cross-process stable names for Analyzers
-
+	categoryFilter  string
 	summaryHashOnce sync.Once
 	_summaryHash    file.Hash // memoized hash of data affecting dependents
 }
@@ -703,12 +704,13 @@ func (an *analysisNode) run(ctx context.Context) (*analyzeSummary, error) {
 				hdeps = append(hdeps, mkAction(req))
 			}
 			act = &action{
-				a:          a,
-				fsource:    an.fsource,
-				stableName: an.stableNames[a],
-				pkg:        pkg,
-				vdeps:      an.succs,
-				hdeps:      hdeps,
+				a:              a,
+				fsource:        an.fsource,
+				stableName:     an.stableNames[a],
+				pkg:            pkg,
+				vdeps:          an.succs,
+				hdeps:          hdeps,
+				categoryFilter: an.categoryFilter,
 			}
 			actions[a] = act
 		}
@@ -876,13 +878,14 @@ type analysisPackage struct {
 // package (as different analyzers are applied, either in sequence or
 // parallel), and across packages (as dependencies are analyzed).
 type action struct {
-	once       sync.Once
-	a          *analysis.Analyzer
-	fsource    file.Source // Snapshot.ReadFile, for Pass.ReadFile
-	stableName string      // cross-process stable name of analyzer
-	pkg        *analysisPackage
-	hdeps      []*action                   // horizontal dependencies
-	vdeps      map[PackageID]*analysisNode // vertical dependencies
+	once           sync.Once
+	a              *analysis.Analyzer
+	fsource        file.Source // Snapshot.ReadFile, for Pass.ReadFile
+	stableName     string      // cross-process stable name of analyzer
+	pkg            *analysisPackage
+	hdeps          []*action                   // horizontal dependencies
+	vdeps          map[PackageID]*analysisNode // vertical dependencies
+	categoryFilter string
 
 	// results of action.exec():
 	result  any // result of Run function, of type a.ResultType
@@ -1134,6 +1137,9 @@ func (act *action) exec(ctx context.Context) (any, *actionSummary, error) {
 			if err := analysisinternal.ValidateFixes(apkg.pkg.FileSet(), analyzer, d.SuggestedFixes); err != nil {
 				bug.Reportf("invalid SuggestedFixes: %v", err)
 				d.SuggestedFixes = nil
+			}
+			if !analysisinternal.EnabledCategory(d.Category, act.categoryFilter) {
+				return
 			}
 			diagnostic, err := toGobDiagnostic(posToLocation, analyzer, d)
 			if err != nil {

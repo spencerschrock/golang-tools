@@ -494,6 +494,16 @@ type DiagnosticOptions struct {
 	// analysis facts for all its dependencies. The index is cached in the
 	// filesystem, so subsequent analysis should be faster.
 	AnalysisProgressReporting bool
+
+	// CategoryFilter specify categories that the user would like to filter from
+	// the enabled analyses.
+	//
+	// Example Usage:
+	// ```json5
+	// "categoryFilter": "-efaceany" // Disable the efaceany category of the modernizer linter.
+	// ...
+	// ```
+	CategoryFilter string `status:"experimental"`
 }
 
 type InlayHintOptions struct {
@@ -1288,6 +1298,9 @@ func (o *Options) setOne(name string, value any) (applied []CounterPath, _ error
 
 	case "pullDiagnostics":
 		return setBool(&o.PullDiagnostics, value)
+
+	case "categoryFilter":
+		return nil, setString(&o.CategoryFilter, value)
 
 	// deprecated and renamed settings
 	//
