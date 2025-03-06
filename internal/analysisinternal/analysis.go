@@ -487,3 +487,29 @@ func CanImport(from, to string) bool {
 	}
 	return true
 }
+
+// EnabledCategory reports whether a given category is enabled in the specified filter.
+// Categories in the filter can either be specified by name, or excluded with a `-`.
+func EnabledCategory(category, filter string) bool {
+	if filter == "" {
+		return true
+	}
+	filters := strings.Split(filter, ",")
+
+	var include bool
+	for _, f := range filters {
+		c, exclude := strings.CutPrefix(f, "-")
+		if exclude {
+			if c == category {
+				return false
+			}
+		} else {
+			include = true
+			if c == category {
+				return true
+			}
+		}
+
+	}
+	return !include
+}
